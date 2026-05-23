@@ -12,10 +12,8 @@ Read these before substantive work:
 3. the active SpecKit feature directory under `specs/`, when one exists
 
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan once a
-feature plan exists. Do not invent a plan path before `/speckit-plan` creates
-one.
+For the active bounded feature, read `specs/001-core-cli-mvp/plan.md` for
+technologies, project structure, shell commands, and implementation constraints.
 <!-- SPECKIT END -->
 
 ## Product boundary
