@@ -148,8 +148,8 @@ sequence unless the project owner explicitly approves a narrower spike:
 1. `/speckit-constitution` for governance changes
 2. `/speckit-specify` focused on what and why, not implementation stack
 3. `/speckit-clarify` for high-impact ambiguity, one question at a time
-4. `/speckit-checklist` for requirements quality
-5. `/speckit-plan` for technical plan and Constitution Check
+4. `/speckit-plan` for technical plan and Constitution Check
+5. `/speckit-checklist` for requirements quality before task generation
 6. `/speckit-tasks` for dependency-ordered tasks by user story
 7. `/speckit-analyze` before implementation; CRITICAL/HIGH findings block work
 8. `/speckit-implement` or equivalent agent execution against the task file

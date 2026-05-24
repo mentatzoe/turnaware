@@ -28,6 +28,12 @@ def _optional_string(value: Any, name: str) -> str | None:
     return value
 
 
+def _optional_mapping(value: Any, name: str) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return dict(_require_mapping(value, name))
+
+
 def _required_non_empty_string(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValidationError(f"{name} must be a non-empty string")
@@ -80,6 +86,10 @@ def validate_request(raw):
         surface = dict(_require_mapping(surface, "surface"))
 
     request_id = _optional_string(data.get("request_id"), "request_id")
+    classifier = _optional_string(data.get("classifier"), "classifier")
+    if classifier is not None and not classifier.strip():
+        raise ValidationError("classifier must not be empty when supplied")
+    classifier_config = _optional_mapping(data.get("classifier_config"), "classifier_config")
 
     return AdmissionRequest(
         trigger=trigger,
@@ -87,6 +97,8 @@ def validate_request(raw):
         agent=agent,
         surface=surface,
         request_id=request_id,
+        classifier=classifier,
+        classifier_config=classifier_config,
     )
 
 
@@ -101,6 +113,10 @@ def validate_result(raw):
     verdict = data.get("verdict")
     if verdict not in VERDICTS:
         raise ValidationError("result.verdict must be one of PASS, ACK, ASK, SPEAK")
+
+    classifier = data.get("classifier")
+    if not isinstance(classifier, str) or not classifier.strip():
+        raise ValidationError("result.classifier must be a non-empty string")
 
     confidences = _require_mapping(data.get("confidences"), "result.confidences")
     missing = set(VERDICTS).difference(confidences)
