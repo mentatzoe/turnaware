@@ -1,0 +1,128 @@
+# Feature Specification: Classifier Verdict Test Suite
+
+**Feature Branch**: `003-classifier-test-suite`
+
+**Created**: 2026-05-25
+
+**Status**: Draft
+
+**Input**: User description: "Design a comprehensive test suite from the failure modes observed [in the TUR-12 adversarial classifier corpus] as its own standalone spec."
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - Implementer validates a classifier change against the known failure modes (Priority: P1)
+
+A TurnAware contributor is working on the admission classifier (today the deterministic substring path in `turnaware/core.py::_classify_text`; tomorrow whatever replaces it). They want a single, deterministic test suite they can run before opening a PR and have a clear, line-by-line answer to "does this candidate produce the right verdict for every situation we have already observed going wrong?" The suite must call out, for each failure, which case is broken and why it matters — so the contributor does not have to re-read the smoke threads from TUR-8, TUR-9, and TUR-10 to interpret a red line.
+
+**Why this priority**: The whole reason this spec exists is that the verdict-classifier slice is currently being completed under TUR-11 with no shared, runnable corpus. Without P1, a "done" claim on the classifier is unverifiable and the two observed false-verdict bugs (false ACK from substring trap, false PASS from trigger-only fake-done) can ship again silently. Every other user story depends on this one.
+
+**Independent Test**: Run the published suite command against the smoke commit `a132ccc` of `turnaware-0.1.0`. The suite MUST report at least the two observed false-verdict cases as failures (with expected vs. observed verdict). Run the same command against a candidate that fixes the substring path. The suite MUST report zero failures with no fixture edits. No other component of the TurnAware product needs to exist for this test to be meaningful.
+
+**Acceptance Scenarios**:
+
+1. **Given** the classifier at the smoke commit `a132ccc`, **When** the contributor runs the suite, **Then** the suite reports failure for the "comment back with results" case (expected SPEAK, observed ACK) and for the fake-done case (expected non-PASS, observed PASS), and reports pass for every representative per-verdict case.
+2. **Given** a candidate classifier that resolves both observed failure modes, **When** the contributor runs the suite, **Then** the suite reports zero failures across the entire fixture set with no fixture content changed.
+3. **Given** a candidate classifier that "fixes" the false ACK by deleting the ACK keyword `"ack "` from its keyword list, **When** the contributor runs the suite, **Then** the suite reports the regression on the legitimate ACK fixture (an honest acknowledgement broadcast is now misclassified) and not just the original false-ACK fixture flipping. The suite must make it impossible to claim a fix that drops legitimate matches.
+4. **Given** the suite output, **When** the contributor reads a failing line, **Then** the line names the fixture, the expected verdict, the observed verdict, and the specific failure mode or invariant the fixture is exercising — without the contributor needing to open the source comment in TUR-12 or the source smoke threads.
+
+---
+
+### User Story 2 - Reviewer accepts or blocks a classifier PR using the suite as the contract (Priority: P2)
+
+A TurnAware reviewer (Dalgos-lane or human) is reviewing a classifier PR. The reviewer wants to use the suite as the merge contract: a PR may not land unless its CI run of the suite passes, and a reviewer challenging the PR can point at a specific failing fixture rather than at prose ("I think this might break X"). The reviewer should be able to reproduce the result locally with the same command the contributor runs, against the PR's commit.
+
+**Why this priority**: P2 because the PR-merge gate is only meaningful once P1 exists. With P1 alone, the suite proves the implementer believes they are done; with P2, the reviewer can verify it independently and the corpus stops being institutional knowledge in a single comment thread.
+
+**Independent Test**: Take the suite at this spec's HEAD plus an arbitrary classifier candidate. Two reviewers, on two machines, run the same single command. The list of pass/fail fixtures MUST be identical. Reviewer 2 was given nothing other than the PR link and the suite command.
+
+**Acceptance Scenarios**:
+
+1. **Given** two reviewers and the same classifier candidate, **When** both run the suite, **Then** the per-fixture verdicts and the overall pass/fail count are identical, with no environment-dependent variation.
+2. **Given** a PR that adds a regex-based classifier, **When** the reviewer runs the suite, **Then** the suite exercises the same failure modes as for the substring path — the suite is not coupled to the substring implementation, only to the verdict surface and the failure shapes.
+3. **Given** a failing fixture, **When** the reviewer opens the failing record, **Then** the record links back to (a) the verdict being claimed (PASS/ACK/ASK/SPEAK), (b) which observed failure mode or structural invariant the fixture exercises, and (c) whether the fixture comes from runtime evidence or from code-reading prediction.
+
+---
+
+### User Story 3 - Contributor extends the suite when a new failure is observed in the field (Priority: P3)
+
+When a future Multica thread surfaces a new false-verdict case (e.g., a substring trap that nobody predicted, or a confidence-collapse case), a contributor wants to add a new fixture in minutes — write one envelope file plus one row in an index — without restructuring the runner or learning a fixture DSL.
+
+**Why this priority**: P3 because the suite has value even if it never grows. But the corpus *will* grow as more triggers are seen in real Multica traffic; if extension is hard, the corpus becomes write-once and the suite quietly stops reflecting reality.
+
+**Independent Test**: Given an existing fixture as a template, a contributor unfamiliar with the suite's internals adds one new fixture (envelope + expected verdict + rationale) and re-runs the suite. The new fixture is exercised. Total time to add: under five minutes.
+
+**Acceptance Scenarios**:
+
+1. **Given** an existing passing fixture, **When** a new contributor copies it, edits the trigger/context/expected fields, and re-runs the suite, **Then** the new fixture appears in the report with no edits to the runner.
+2. **Given** a new fixture marked as "predicted (not observed at runtime)", **When** the contributor runs the suite, **Then** the report distinguishes that fixture from runtime-observed ones, so a reader can tell which assertions are backed by evidence and which by code reading.
+
+---
+
+### Edge Cases
+
+The suite MUST fixture the following shapes, each of which has been either observed at runtime on commit `a132ccc` or predicted by reading the classifier code in the TUR-12 corpus:
+
+- **Substring traps under fixed verdict order**: a SPEAK-shaped trigger like `"...comment back with results."` produces ACK because `"ack "` (with trailing space) matches inside `"back "`, and the ACK branch runs before SPEAK. Other predicted variants in the same family: `"resolved"` inside `"unresolved"` (false PASS), `"implement"` inside `"implementation note"` (false SPEAK on an FYI), `"owner"` inside `"co-owner"` (false SPEAK on a third-party reference), `"saw it"` inside contexts containing `"jigsaw items"` or `"chainsaw items"` (false ACK from incidental phrasing), and `"not specified"` inside `"not specified yet but already inferred"` (false ASK overriding a more accurate later signal).
+- **Trigger-only PASS with no corroborating context**: a single phrase like `"I already handled this, posted the fix, no response needed"` in the trigger produces PASS at high confidence with `context_checked` listing only the trigger. PASS is the protocol's only hard-stop verdict; the suite MUST fixture this shape as a non-PASS expectation, since the gate offers no protection if a one-line claim can hard-stop user-visible output.
+- **Trigger contradicts context**: the same trigger as above paired with a context item that demonstrates the work is *not* done (no merged PR, no adapter, no deploy artifact). PASS via trigger-first short-circuit is the observed wrong answer; the suite MUST require the gate to surface the contradiction (e.g., produce SPEAK or ASK, or at minimum lower its confidence and include both items in `context_checked`).
+- **Symmetric contradiction**: a SPEAK-shaped assignment trigger paired with a context item that says `"resolved, no response needed"`. The honest verdict is debatable, but silently dropping one side is not acceptable.
+- **`context_checked` truncation**: a multi-item context where the classifier consults more than one item but the audit field lists only the first decisive match. The suite MUST require the audit field to reflect every item the classifier consulted, not stop at the first match.
+- **ASK as fallthrough vs. positive ASK**: an envelope with no PASS/ACK/SPEAK keywords and also no genuine ASK signal currently lands on ASK at the same 0.85 confidence as a real "needs clarification" case. The suite MUST include a negative-control fixture where ASK at high confidence is the wrong outcome, so a future classifier cannot collapse to "ASK whenever the keyword path recognises nothing."
+- **Constant confidence**: an envelope where two verdicts have plausible support (e.g., an ACK trigger inside a PASS context). The suite MUST require that the chosen-but-uncertain verdict not carry the same confidence as a clean unambiguous match.
+- **Legitimate per-verdict baselines**: at least one honest envelope for each of PASS, ACK, ASK, SPEAK, sourced from real TUR-6 / TUR-8 / TUR-9 / TUR-10 trigger/context shapes. These MUST pass on `a132ccc` and continue to pass on any candidate fix — they exist to catch fixes that "solve" a false case by dropping legitimate matches.
+- **No-keyword negative control**: an envelope whose trigger and context contain none of the verdict keywords. This is the floor case for the ASK-fallthrough invariant.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: The test suite MUST include a fixture reproducing the observed false ACK on the assignment text `"...comment back with results."`, with expected verdict SPEAK and a documented note that the failure is caused by a substring keyword match in a fixed-order keyword path. Source: TUR-9 sample `multica_speak_tur9.json` against commit `a132ccc`.
+- **FR-002**: The test suite MUST include a fixture reproducing the observed false PASS on a fake-done trigger paired with contradicting context, with expected verdict non-PASS (SPEAK or ASK, the suite SHOULD accept either) and a documented note that the failure is caused by trigger-first short-circuit ignoring context. Source: TUR-9 sample `multica_challenger_fake_done.json` against commit `a132ccc`.
+- **FR-003**: The test suite MUST include at least one fixture per verdict (PASS, ACK, ASK, SPEAK) drawn from a real Multica trigger/context shape that was observed to produce that verdict correctly on commit `a132ccc`. These fixtures MUST pass on the smoke commit and on any candidate fix.
+- **FR-004**: The test suite MUST include at least one fixture for each of the predicted substring traps that were *not* runtime-observed (`"unresolved"`/`"resolved"`, `"implementation note"`/`"implement"`, `"co-owner"`/`"owner"`, `"jigsaw items"`/`"saw it"`, `"not specified yet but already inferred"`/`"not specified"`). Each such fixture MUST be flagged as "predicted, not runtime-observed" in its metadata so a reader can tell evidence-backed assertions from code-reading hypotheses. Predicted fixtures count toward the suite but do not gate merge until a future implementer confirms or rules out the case.
+- **FR-005**: The test suite MUST include a trigger-only-PASS fixture: a PASS-keyword-bearing trigger with an empty context, expected verdict non-PASS. This exercises the invariant that PASS requires corroborating context, independent of the contradiction case in FR-002.
+- **FR-006**: The test suite MUST include at least one ASK-fallthrough negative-control fixture: a trigger and context that contain no verdict keywords from any branch, expected verdict NOT ASK at 0.85 confidence. The fixture MAY accept any outcome (a lower-confidence ASK, an explicit "no decision", or an alternative verdict) provided the outcome is distinguishable from the positive ASK case in FR-003.
+- **FR-007**: The test suite MUST include at least one contradiction-audit fixture: a trigger and context that disagree on the verdict, where the expected behaviour is that the classifier's audit output names both items it consulted rather than stopping at the first match. The exact verdict is left open by this fixture; what is asserted is the audit-trail completeness.
+- **FR-008**: The test suite MUST include at least one constant-confidence fixture: two plausible verdicts in the envelope, where the expected behaviour is that the winning verdict carries lower confidence than a clean unambiguous baseline fixture in the same verdict class. This exercises the invariant that confidence is informative rather than a hard-coded constant.
+- **FR-009**: Each fixture MUST be a self-contained envelope (trigger text + ordered context items) that can be replayed against any classifier under test without depending on external state, network access, or LLM availability. Observed failures the suite cares about are mechanism bugs in the deterministic path; the suite MUST NOT prescribe a provider or model and MUST run identically offline.
+- **FR-010**: Each fixture MUST carry, alongside its envelope, the following metadata: expected verdict (or set of acceptable verdicts), source identifier (which TUR-N issue + comment id the case is distilled from, OR an explicit "predicted, not observed" marker), the failure mode or invariant the fixture exercises, and a one-line rationale for why the case matters.
+- **FR-011**: The test suite MUST be runnable from the repository root by a single command with no arguments, and that command MUST exit non-zero if any fixture fails.
+- **FR-012**: The test suite output MUST include, for every fixture, the fixture name, the expected verdict (or acceptable set), the observed verdict, the pass/fail status, and — for failing fixtures — the failure mode or invariant the fixture is exercising. A human reader MUST NOT need to open the source comment or smoke threads to interpret a failing line.
+- **FR-013**: The test suite output MUST be available in both a machine-readable form (consumable by CI and by future reporting tools) and a human-readable form (readable in a terminal without parsing). Both forms MUST cover the same set of fixtures with the same fields named in FR-012.
+- **FR-014**: The test suite MUST be extendable by adding a single fixture file (envelope + metadata) and, if required by the runner, a single index entry — without editing the runner's logic. Adding a fixture MUST NOT require any change to existing fixtures.
+- **FR-015**: The test suite MUST run deterministically. A given suite version against a given classifier candidate MUST produce identical pass/fail results across machines, across operating systems supported by the project, and across repeated runs. No flakiness budget.
+- **FR-016**: The test suite MUST distinguish, in its output, the failure modes inherited from commit `a132ccc` (currently broken — must be fixed by the classifier-completion slice in TUR-11) from the structural invariants (must hold under any future classifier, including ones that abandon the substring approach entirely). The two categories MUST be separately countable.
+- **FR-017**: The test suite MUST be vendored — fixtures, runner, and any helper data live inside the repository under the spec directory's contracts area. The suite MUST NOT fetch any input from a remote source at run time.
+
+### Key Entities
+
+- **Fixture**: a self-contained test case. Holds a Multica-shaped envelope (trigger text + ordered context items as observed in TUR-8/9/10), the expected verdict (or set of acceptable verdicts), a source pointer (TUR-N issue + comment id, OR an explicit "predicted, not observed" marker), the failure mode or invariant exercised, and a one-line rationale for relevance.
+- **Verdict**: one of PASS, ACK, ASK, SPEAK as defined by the TurnAware protocol. PASS is the only hard-stop verdict (no user-visible message permitted). The suite operates over this closed set.
+- **Failure mode**: a named, observed-or-predicted defect (e.g., "substring trap", "trigger-only PASS", "context-trigger contradiction silently resolved", "constant confidence"). Each fixture is tagged with one. Output groups failures by mode.
+- **Structural invariant**: a property the classifier must hold regardless of implementation (e.g., "PASS requires corroborating context"; "audit field reflects every consulted item"; "ASK is not the fallthrough verdict"). Each invariant is exercised by at least one fixture.
+- **Test report**: the per-fixture record produced by a run. Holds the fields enumerated in FR-012 in both the machine-readable and human-readable forms (FR-013), and partitions failures by `a132ccc`-inherited failure modes vs. structural invariants (FR-016).
+- **Fixture source provenance**: per fixture, either a runtime-observation pointer (the TUR-N issue and comment id where the verdict was observed) or a "predicted" flag indicating the case came from reading classifier code rather than from runtime evidence.
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: Running the test suite against commit `a132ccc` produces at least two failures: the false ACK case (FR-001) and the false PASS case (FR-002). Every representative per-verdict fixture (FR-003) passes against the same commit. No fixture flakes between runs.
+- **SC-002**: Running the test suite against a candidate classifier that resolves both observed failure modes produces zero failures with no fixture edits. The same candidate's pass result is independently reproducible by a second reviewer on a separate machine with the same command.
+- **SC-003**: The suite covers, at minimum, every required fixture class enumerated in FR-001 through FR-008. Each verdict (PASS, ACK, ASK, SPEAK) appears at least once as a "must keep passing" baseline, and each observed failure mode and each structural invariant is exercised by at least one fixture.
+- **SC-004**: A contributor unfamiliar with the suite's internals can add a new fixture (envelope file + metadata) in under five minutes given an existing fixture as a template. No edits to the runner are required.
+- **SC-005**: The full suite executes in under five seconds on a standard developer laptop. No network calls. No LLM calls. No external data fetched at run time.
+- **SC-006**: For every failing fixture, the human-readable output names the fixture, the expected and observed verdicts, and the failure mode or invariant exercised — without requiring the reader to open the TUR-12 corpus comment or any TUR-8/9/10 thread.
+- **SC-007**: The suite's pass/fail outcome can be consumed by an automated check (machine-readable form per FR-013) without parsing the human-readable form. Both forms agree on every fixture in every run.
+- **SC-008**: The suite distinguishes runtime-observed failures from predicted-only failures in both forms of its output. A reviewer reading the report can count, without manual cross-reference, how many of the open failures are backed by runtime evidence.
+
+## Assumptions
+
+- The classifier under test exposes a verdict surface of PASS, ACK, ASK, SPEAK as documented in the TurnAware constitution and produces, per call, at least a verdict and an audit trail of which context items were consulted. This matches the public CLI's `--input <sample>.json` shape established in TUR-8 / TUR-9 / TUR-10.
+- The fixture envelope shape mirrors the Multica-shaped envelopes used by the TUR-8 / TUR-9 / TUR-10 smoke runs (trigger text + ordered list of context items, each item carrying enough source identification to be cited in the audit field).
+- The TUR-12 adversarial corpus comment (id `42611d71-af31-4881-9fd9-33161dac2ffb` on issue `b45da84e-023b-4f1a-bdb3-c7f2d03f30b9`) is the authoritative source for fixture content. This spec does not re-investigate those cases; the implementer of the suite reconstructs envelopes from the trigger/context summaries documented there.
+- The two observed failure modes (false ACK on `"comment back with results"`, false PASS on the fake-done trigger) were reproducible at commit `a132ccc` of `turnaware-0.1.0`. The suite encodes the *requirement* that those triggers produce the right verdict; if the classifier on `main` has since moved, the failure surface may have shifted, but the requirement does not.
+- This spec is for the test suite only. It does not produce or modify the classifier itself. The implementation of classifier fixes is the responsibility of the classifier-completion lifecycle (TUR-11), which consumes this suite as its acceptance contract.
+- The suite is provider- and model-agnostic. All observed failures are mechanism bugs in the deterministic keyword path; no fixture depends on LLM behaviour. A future LLM-based classifier is also tested against this suite as long as it exposes the same verdict surface.
+- The repository's existing SpecKit workflow (`/speckit-specify` → `/speckit-clarify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`) is the production pathway. This file is the output of `/speckit-specify`; the runner and fixtures themselves are produced by `/speckit-implement` after `/speckit-plan` and `/speckit-tasks` have been completed.
+- The spec directory name `003-classifier-test-suite` is assigned because `001-core-cli-mvp` and `002-admission-classifier` are already in flight on other branches; this spec is a standalone test-suite spec and does not co-own either of those lifecycles.
