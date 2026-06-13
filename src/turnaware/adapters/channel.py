@@ -121,6 +121,7 @@ def build_request(
     *,
     agent_id: str,
     agent_role: str | None = None,
+    agent_mention_id: str | None = None,
     surface: dict[str, Any] | None = None,
     pinned_rules: str | None = None,
 ) -> dict[str, Any]:
@@ -129,8 +130,11 @@ def build_request(
     Transcript lines become ordered context items tagged with the speaker's
     normalized role (operator/peer/self); a line authored by ``agent_id`` is
     tagged ``self`` so the classifier can apply Self-caused / Duplicate
-    suppression. Optional ``pinned_rules`` (the channel's governance text) is
-    supplied as a context item so the verdict is channel-aware.
+    suppression. ``agent_mention_id`` (the agent's @mention handle on the
+    surface) is threaded into the envelope so the addressing rule can tell
+    whether an @mention targets this agent. Optional ``pinned_rules`` (the
+    channel's governance text) is supplied as a context item so the verdict is
+    channel-aware.
     """
     trig = _coerce_message(trigger, "trigger")
     history = history or []
@@ -160,6 +164,12 @@ def build_request(
             }
         )
 
+    agent: dict[str, Any] = {"id": agent_id}
+    if agent_role:
+        agent["role"] = agent_role
+    if agent_mention_id:
+        agent["mention_id"] = agent_mention_id
+
     request: dict[str, Any] = {
         "trigger": {
             "id": trig.message_id or "trigger",
@@ -168,7 +178,7 @@ def build_request(
             "timestamp": trig.timestamp,
         },
         "context": context,
-        "agent": {"id": agent_id, **({"role": agent_role} if agent_role else {})},
+        "agent": agent,
         "surface": surface or {"type": "channel"},
     }
     if trig.message_id:
@@ -182,6 +192,7 @@ def gate(
     *,
     agent_id: str,
     agent_role: str | None = None,
+    agent_mention_id: str | None = None,
     surface: dict[str, Any] | None = None,
     pinned_rules: str | None = None,
     fail_policy: FailPolicy = "open",
@@ -207,6 +218,7 @@ def gate(
         history,
         agent_id=agent_id,
         agent_role=agent_role,
+        agent_mention_id=agent_mention_id,
         surface=surface,
         pinned_rules=pinned_rules,
     )
@@ -305,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
             payload.get("history") or [],
             agent_id=agent_id,
             agent_role=agent.get("role") if isinstance(agent, dict) else None,
+            agent_mention_id=agent.get("mention_id") if isinstance(agent, dict) else None,
             surface=payload.get("surface"),
             pinned_rules=payload.get("pinned_rules"),
             fail_policy=payload.get("fail_policy", "open"),

@@ -71,6 +71,15 @@ class BuildRequestTests(unittest.TestCase):
         )
         self.assertEqual(req["context"][0]["type"], "self")
 
+    def test_agent_mention_id_threaded_into_envelope(self):
+        # The addressing rule needs the agent's @mention handle to tell whether
+        # an @mention targets this agent; the adapter must pass it through.
+        req = build_request(
+            {"content": "hi <@123>", "id": "t-1"}, [],
+            agent_id="dalgos", agent_mention_id="999",
+        )
+        self.assertEqual(req["agent"]["mention_id"], "999")
+
     def test_pinned_rules_injected_as_context(self):
         req = build_request(
             {"content": "hi", "id": "t-1"},

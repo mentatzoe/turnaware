@@ -25,50 +25,41 @@ from turnaware.adapters.channel import gate
 AGENT = {"id": "dalgos", "role": "participant", "mention_id": "1494822747856967683"}
 
 # Each turn: (label, trigger, recent transcript, expected-ish verdict for the demo narrative)
+# A realistic burst of channel traffic the agent `dalgos` is woken on. Each entry
+# is (label, trigger, recent transcript). The demo prints the gate's verdict,
+# reason, and what the agent's transport would emit — it asserts nothing, it
+# shows the gate reading the room.
 TURNS = [
     (
-        "addressed to another agent",
+        "operator addresses a different agent",
         {"content": "vigil, can you rebase the classifier branch onto main?", "author": "zoe",
          "author_kind": "human", "message_id": "m-1"},
         [],
-        "PASS (not my turn)",
     ),
     (
-        "a peer already made my point",
-        {"content": "What cache backend should we use?", "author": "zoe",
-         "author_kind": "human", "message_id": "m-2"},
-        [{"content": "In-process LRU is the right call; Redis adds a network hop we don't need.",
-          "author": "vigil", "author_kind": "peer_bot", "message_id": "m-1b"}],
-        "PASS (Covered)",
-    ),
-    (
-        "direct substantive ask to me",
+        "operator asks me directly for substantive work",
         {"content": "dalgos, summarize the tradeoffs of the in-process cache for the channel.",
-         "author": "zoe", "author_kind": "human", "message_id": "m-3"},
+         "author": "zoe", "author_kind": "human", "message_id": "m-2"},
         [],
-        "SPEAK",
     ),
     (
-        "ambiguous ask that would produce wrong work",
-        {"content": "dalgos, update the config to the new value.", "author": "zoe",
-         "author_kind": "human", "message_id": "m-4"},
-        [],
-        "ASK (which value?)",
-    ),
-    (
-        "bare resolution claim, no corroboration",
-        {"content": "Already handled. Resolved. No response needed.", "author": "zoe",
-         "author_kind": "human", "message_id": "m-5"},
-        [],
-        "not PASS (verify)",
-    ),
-    (
-        "a peer's imperative is an observation, not my directive",
+        "the trigger echoes my own earlier turn (Duplicate)",
         {"content": "dalgos should double-check the rate-limit path.", "author": "castor",
-         "author_kind": "peer_bot", "message_id": "m-6"},
+         "author_kind": "peer_bot", "message_id": "m-3"},
         [{"content": "Rate-limit path looks correct to me after the last fix.",
-          "author": "dalgos", "author_kind": "self", "message_id": "m-5b"}],
-        "PASS (Duplicate/observation)",
+          "author": "dalgos", "author_kind": "self", "message_id": "m-2b"}],
+    ),
+    (
+        "an @mention aimed at someone else",
+        {"content": "Hey <@1494822530643398827>, could you post a recap when you get a sec?",
+         "author": "zoe", "author_kind": "human", "message_id": "m-4"},
+        [],
+    ),
+    (
+        "operator hands me a genuinely new task",
+        {"content": "dalgos, draft the migration note for the cache change and share it here.",
+         "author": "zoe", "author_kind": "human", "message_id": "m-5"},
+        [],
     ),
 ]
 
@@ -79,23 +70,29 @@ def main() -> int:
               "or TURNAWARE_CLASSIFIER_TEST_RESULT to see routing offline.", file=sys.stderr)
         return 2
 
-    print(f"agent: {AGENT['id']}  (mention_id {AGENT['mention_id']})\n")
+    print(f"agent: {AGENT['id']}  (mention_id {AGENT['mention_id']})")
+    print("The gate decides whether dalgos speaks; PASS emits the sentinel "
+          "cc-connect suppresses.\n")
     model_seen = None
-    for label, trigger, history, narrative in TURNS:
+    spoke = silent = 0
+    for label, trigger, history in TURNS:
         result = gate(trigger, history, agent_id=AGENT["id"],
-                      agent_role=AGENT["role"], surface={"type": "discord"},
-                      fail_policy="open")
+                      agent_role=AGENT["role"], agent_mention_id=AGENT["mention_id"],
+                      surface={"type": "discord"}, fail_policy="open")
         model_seen = result.classifier_model or model_seen
-        emitted = repr(result.emit()) if result.silent else "(agent composes its turn)"
+        if result.silent:
+            silent += 1
+            action = f"emit {result.sentinel!r}  (suppressed)"
+        else:
+            spoke += 1
+            action = "agent composes its turn"
         print(f"• {label}")
         print(f"    trigger : {trigger['content']}")
-        print(f"    verdict : {result.verdict:5s}   [demo expects ~ {narrative}]")
-        print(f"    emits   : {emitted}")
+        print(f"    verdict : {result.verdict:5s} -> {action}")
         if result.reasons:
             print(f"    reason  : {result.reasons[0]}")
         print()
-    if model_seen:
-        print(f"classifier model: {model_seen}")
+    print(f"{silent} suppressed, {spoke} spoke — classifier model: {model_seen}")
     return 0
 
 
