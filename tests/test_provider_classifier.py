@@ -79,10 +79,16 @@ class ProviderClassifierTests(unittest.TestCase):
         system_prompt = payload["messages"][0]["content"]
         self.assertIn('"reasons":["short reason"]', system_prompt)
         self.assertIn("reasons MUST be a non-empty JSON array of strings", system_prompt)
-        self.assertIn("do NOT return PASS", system_prompt)
+        # Admission rubric: the load-bearing pragmatic rules every candidate
+        # model must be told (addressing, suppressors, unverified-resolution).
+        self.assertIn("ADDRESSING", system_prompt)
+        self.assertIn("mention_id", system_prompt)
+        self.assertIn("SUPPRESSORS", system_prompt)
+        self.assertIn("Covered", system_prompt)
+        self.assertIn("Duplicate", system_prompt)
+        self.assertIn("UNVERIFIED RESOLUTION", system_prompt)
+        self.assertIn("net-new value", system_prompt)
         self.assertIn("return SPEAK rather than ACK", system_prompt)
-        self.assertIn("Use ASK when", system_prompt)
-        self.assertIn("Use ACK only", system_prompt)
 
     def test_product_default_without_provider_config_fails_clearly(self):
         with patch.dict("os.environ", {}, clear=True):
@@ -97,6 +103,34 @@ class ProviderClassifierTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 3)
         self.assertEqual(completed.stdout, "")
         self.assertIn("unsupported classifier", completed.stderr.lower())
+
+    def test_markdown_fenced_provider_json_is_accepted(self):
+        # Some OpenAI-compatible endpoints ignore response_format and wrap the
+        # object in a ```json fence; the parser must unwrap it for portability.
+        provider_result = {
+            "verdict": "PASS",
+            "confidences": {"PASS": 0.8, "ACK": 0.1, "ASK": 0.05, "SPEAK": 0.05},
+            "context_checked": ["trigger:trigger-pass", "context:ctx-pass-handled"],
+            "reasons": ["fenced JSON still parses"],
+        }
+        fenced = "```json\n" + json.dumps(provider_result) + "\n```"
+        completion = {"choices": [{"message": {"content": fenced}}]}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return json.dumps(completion).encode("utf-8")
+
+        env = {"TURNAWARE_CLASSIFIER_MODEL": "m", "OPENROUTER_API_KEY": "k"}
+        with patch.dict("os.environ", env, clear=True):
+            with patch("urllib.request.urlopen", return_value=FakeResponse()):
+                result = evaluate(load_fixture("pass"))
+        self.assertEqual(result["verdict"], "PASS")
 
 
 if __name__ == "__main__":
