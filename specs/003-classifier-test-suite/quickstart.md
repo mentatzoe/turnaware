@@ -13,11 +13,16 @@ The classifier on `main` is provider-backed (spec 002). For a deterministic, off
 ```bash
 # from repo root
 pip install -e .                                          # one-time, installs the `turnaware` CLI
-export TURNAWARE_CLASSIFIER_TEST_RESULT='{"verdict":"SPEAK","confidences":{"PASS":0.05,"ACK":0.05,"ASK":0.05,"SPEAK":0.85},"context_checked":["trigger:pinned"],"reasons":["pinned test verdict"]}'
+export TURNAWARE_CLASSIFIER_TEST_RESULT='{"verdict":"SPEAK","confidences":{"PASS":0.05,"ACK":0.05,"ASK":0.05,"SPEAK":0.8},"context_checked":[],"reasons":["pinned test verdict"]}'
 python3 specs/003-classifier-test-suite/contracts/runner.py
 ```
 
-Exit code is `0` if every fixture passed; `1` if any fixture failed or any adapter-level error occurred.
+(`context_checked` must be `[]` here: the core validates checked references
+against each envelope, and the empty list is the only subset valid for every
+fixture simultaneously. The winner confidence sits below the 0.85 FR-008
+baseline so declared-invariant fixtures are judged on their verdict.)
+
+Exit code is `0` if every fixture passed; `1` if any fixture failed or any adapter-level error occurred. Under a single pinned verdict, fixtures whose expected set does not contain that verdict report `fail` by design — a healthy pinned run shows zero `error` records and exit `1`.
 
 This path is fully deterministic — byte-identical JSONL across repeated runs with `--deterministic-time` (FR-015 as re-scoped). Because every fixture receives the same pinned decision here, this run exercises the runner, loader, report, and contract plumbing; per-fixture verdict judgment is what the live run below measures. (The `unittest` self-tests pin per-fixture decisions instead.)
 
@@ -78,10 +83,12 @@ Prints the index (id, source, evidence, expected verdict, FR refs) one per line.
 
 3. Edit `d-my-new-case.meta.json` — set `id`, `title`, `expected.verdict`, `failure_mode`, `invariant`, `rationale`, `fr_refs`, `sc_refs`. If the case came from runtime evidence, set `evidence: "runtime"` and `runtime_source`; if it came from code reading, set `evidence: "predicted"` and `predicted_basis`.
 
-4. Run the suite. Your fixture appears in the report with no runner code changes.
+4. Run the suite (with the offline injection or live provider environment from
+   the run sections above). Your fixture appears in the report with no runner
+   code changes.
 
    ```bash
-   python3 specs/003-classifier-test-suite/contracts/runner.py
+   python3 specs/003-classifier-test-suite/contracts/runner.py --source discord
    ```
 
 ## Plug in a non-default adapter

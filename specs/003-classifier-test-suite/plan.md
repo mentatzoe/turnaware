@@ -127,3 +127,16 @@ See `data-model.md`, `contracts/README.md`, and `quickstart.md` for the artifact
 ## Re-check Constitution Check post-Phase 1
 
 Phase 1 introduces no new architecture, only the concrete file layout. The eight gates above still PASS. No new violations.
+
+## Re-check Constitution Check post-implementation (T045, 2026-06-13)
+
+Implementation complete (37 fixtures, invariant dispatch wired into the
+runner, 18 self-tests in `tests/test_003_runner.py`, post-002 reconciliation
+applied). The eight gates re-checked against the shipped code: PASS, no new
+violations. Notes: the suite still composes no reply prose (I); the FR-020
+sentinel-leak contract path is exercised by both fixtures and self-tests
+(II); the runner consumes the public CLI via the subprocess adapter and the
+in-process callable via `InProcessAdapter` with no decision logic of its own
+(III); the deterministic self-test path satisfies test-first discipline while
+live provider judgment is captured as timestamped evidence rather than
+asserted (V, VIII).

@@ -1,15 +1,25 @@
 # Evidence
 
-This directory carries runtime artifacts produced by exercising the suite. The
-artifacts here are the suite's first runtime evidence and are what TUR-11's
-classifier-completion implementor consumes.
+This directory carries runtime artifacts produced by exercising the suite.
 
-## a132ccc-baseline.jsonl
+## Index
+
+| Artifact | Captured | Classifier under test | What it proves |
+|----------|----------|----------------------|----------------|
+| `a132ccc-baseline.jsonl` | 2026-05-25 | historical deterministic substring classifier (`a132ccc`) | the suite detects the 13 known failure classes (HISTORICAL — frozen; that classifier no longer exists on `main`) |
+| `perf-deterministic-2026-06-13.txt` | 2026-06-13 | n/a (pinned injection, plumbing only) | SC-005 wall-clock budget on the deterministic path at 37 fixtures |
+| `unittest-2026-06-13.txt` | 2026-06-13 | n/a (offline self-tests) | runner/loader/report/invariant machinery green via stdlib `unittest` |
+| `<sha>-live.jsonl` | pending (R5) | `main`'s provider-backed product classifier | live judgment evidence — no pass/fail claims about the live classifier exist until this is captured |
+
+## a132ccc-baseline.jsonl (historical)
 
 The complete suite output (JSONL form, deterministic time zeroed) against the
-public `turnaware` CLI at the worktree HEAD. The classifier code itself is at
-the `a132ccc` smoke commit unchanged — the worktree's commits are SpecKit
-artifacts only.
+public `turnaware` CLI at the original worktree HEAD. The classifier code at
+capture time was the `a132ccc` smoke commit unchanged — the worktree's commits
+were SpecKit artifacts only. Spec 002 has since replaced that classifier; this
+file is preserved as the frozen regression record and is NOT reproducible
+against current `main` (by design — the failures it records were since fixed).
+Note: captured at the 19-fixture MVP corpus; the corpus has since grown to 37.
 
 ### Summary at capture time (2026-05-25)
 
@@ -40,7 +50,7 @@ artifacts only.
 ### How this satisfies the spec's success criteria
 
 - **SC-001**: ≥2 failures on `a132ccc` — 13 observed, including FR-001 and FR-002.
-- **SC-002**: independently reproducible — `python -m pytest tests/test_003_runner.py::test_determinism_two_in_process_runs_byte_identical` passes; two consecutive runs are byte-identical with `--deterministic-time`.
+- **SC-002**: independently reproducible — `python3 -m unittest tests.test_003_runner -k test_determinism_two_in_process_runs_byte_identical` passes; two consecutive deterministic-path runs are byte-identical with `--deterministic-time`.
 - **SC-003**: every required fixture class covered — FR-001, FR-002, FR-003 (×4), FR-005, FR-006, FR-018 (subset of the 11 named cases shipped at MVP), FR-020 (×2), FR-021 (×4).
 - **SC-005**: full suite executes in ~0.7s (subprocess adapter, real CLI) and ~0.0s (in-process adapter) — well under the 5s budget.
 - **SC-008**: distinguishes runtime vs. predicted in both forms — `evidence` field carried in JSONL, `[runtime]` / `[predicted]` prefix in human-readable.
@@ -50,25 +60,19 @@ artifacts only.
 
 ### MVP scope vs. full FR-018 enumeration
 
-The shipped MVP covers 5 of the 11 named Discord-shape cases (FR-018):
-vocative, persona framing, casual pivot, named ask, and the structural
-counterpart via the 4 named-suppressor fixtures (FR-021). The remaining 6
-Discord cases (mixed-address ×2, operator topic-pivot, self-iteration ×2,
-peer-imperative, Discord-mention ×2, multi-step constraint) follow the same
-fixture shape and adapter path; they are tractable in a follow-up because
-the runner does not change. Tracked in `tasks.md` Phase 4.
+At MVP capture time the suite covered 5 of the 11 named Discord-shape cases
+(FR-018) plus the 4 named-suppressor fixtures (FR-021). The remaining cases
+(mixed-address ×2, operator topic-pivot, self-iteration ×2, peer-imperative,
+Discord-mention ×2, multi-step constraint, named-ask unaddressed variant)
+were authored on 2026-06-13 with zero runner changes — confirming the
+extension-ergonomics claim. The corpus now stands at 37 fixtures (15 multica,
+19 discord, 3 contract).
 
-### Reproduce
+### Reproducing evidence against the current classifier
 
-```bash
-# From repo root, after `pip install -e .`
-python specs/003-classifier-test-suite/contracts/runner.py \
-  --adapter subprocess \
-  --format jsonl \
-  --deterministic-time \
-  > /tmp/baseline.jsonl
-diff specs/003-classifier-test-suite/evidence/a132ccc-baseline.jsonl /tmp/baseline.jsonl
-```
-
-If `diff` reports differences, either the classifier has moved (re-baseline
-the file) or the fixtures have been edited (verify the change was intended).
+The historical baseline cannot be re-produced (its classifier is gone). To
+capture fresh evidence against `main`'s product classifier, follow the "live
+provider evidence run" section of `../quickstart.md` and save the JSONL here
+as `<main-sha>-live.jsonl`. For deterministic plumbing evidence, use the
+pinned-injection run from the same quickstart; it must report zero `error`
+records and be byte-identical across consecutive `--deterministic-time` runs.

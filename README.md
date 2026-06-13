@@ -135,6 +135,18 @@ result = evaluate({
 identifies the provider model, and `result["verdict"]` is one of `PASS`, `ACK`,
 `ASK`, or `SPEAK`.
 
+## Verdict test suite
+
+The classifier verdict test suite is the merge contract for classifier
+changes: a fixture corpus of observed and predicted failure modes
+(Multica-shaped agent traffic, Discord-shaped human conversation, and
+verdict-surface contract cases) run through a pluggable adapter against any
+classifier candidate. The single entry command is
+`python3 specs/003-classifier-test-suite/contracts/runner.py`; see
+[specs/003-classifier-test-suite/quickstart.md](specs/003-classifier-test-suite/quickstart.md)
+for the offline deterministic path, live evidence runs, and how to add a
+fixture.
+
 ## Development method
 
 This repository uses Spec Kit. The constitution at

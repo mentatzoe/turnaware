@@ -26,6 +26,14 @@ import report  # noqa: E402
 
 DEFAULT_FIXTURES_ROOT = _HERE / "fixtures"
 
+# Structural invariants applied when the fixture declares the FR (FR-020 is
+# dispatched separately on the mock/contract path).
+_INVARIANT_CHECKS = (
+    ("FR-005", invariants.check_pass_requires_corroborating_context),
+    ("FR-007", invariants.check_context_checked_completeness),
+    ("FR-008", invariants.check_confidence_not_constant),
+)
+
 
 def _run_one_fixture(
     fixture, adapter, *, deterministic_time: bool
@@ -50,19 +58,30 @@ def _run_one_fixture(
         return response, status, None, response.get("error_detail")
 
     observed = response["verdict"]
-    if observed in fixture.expected_verdicts:
-        return response, "pass", observed, None
+    verdict_ok = observed in fixture.expected_verdicts
+    detail = None
     # Special case: FR-006 negative-control expects "NOT (ASK at 0.85)" — encode as expected list lacking ASK
     # but accepting any non-ASK or low-confidence-ASK outcome via the fr_refs marker.
-    if "FR-006" in fixture.fr_refs:
+    if not verdict_ok and "FR-006" in fixture.fr_refs:
         confidence = response.get("confidences", {}).get(observed, 0.0)
         if observed != "ASK" or confidence < 0.85:
-            return response, "pass", observed, f"non-ASK fallthrough ok (FR-006); confidence={confidence}"
-    detail = (
-        f"observed={observed} not in expected={list(fixture.expected_verdicts)}; "
-        f"failure_mode={fixture.failure_mode}"
-    )
-    return response, "fail", observed, detail
+            verdict_ok = True
+            detail = f"non-ASK fallthrough ok (FR-006); confidence={confidence}"
+    if not verdict_ok:
+        detail = (
+            f"observed={observed} not in expected={list(fixture.expected_verdicts)}; "
+            f"failure_mode={fixture.failure_mode}"
+        )
+        return response, "fail", observed, detail
+
+    # A correct verdict alone is not enough: the fixture's declared structural
+    # invariants must also hold for the fixture to pass.
+    for fr_ref, check in _INVARIANT_CHECKS:
+        if fr_ref in fixture.fr_refs:
+            ok, invariant_detail = check(fixture, response)
+            if not ok:
+                return response, "fail", observed, invariant_detail
+    return response, "pass", observed, detail
 
 
 def _print_list(fixtures: list, stream) -> None:

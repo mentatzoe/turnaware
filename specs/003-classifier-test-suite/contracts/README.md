@@ -9,21 +9,24 @@ contracts/
 ├── README.md                   # this file
 ├── runner.py                   # CLI entry point + orchestration (FR-011, FR-013, FR-019)
 ├── adapters.py                 # Adapter protocol + SubprocessAdapter (default) + InProcessAdapter (stub)
-├── loader.py                   # walks fixtures/, validates pairs, builds index.json
+├── loader.py                   # walks fixtures/, validates pairs, builds the in-memory index
 ├── report.py                   # JSONL + human-readable rendering (FR-012, FR-013)
 ├── invariants.py               # FR-005..FR-008 + FR-020 structural-invariant assertion helpers
-├── fixtures/
-│   ├── multica/                # FR-001..FR-008 fixtures from TUR-12 corpus
-│   ├── discord/                # FR-018 + FR-021 fixtures from pilot-bot session
-│   └── contract/               # FR-020 verdict-surface fixtures
-└── index.json                  # generated on every run; cache for `--list`
+└── fixtures/
+    ├── multica/                # FR-001..FR-008 fixtures from TUR-12 corpus
+    ├── discord/                # FR-018 + FR-021 fixtures from pilot-bot session
+    └── contract/               # FR-020 verdict-surface fixtures
 ```
 
 ## Entry command
 
 ```bash
-python -m specs.003-classifier-test-suite.contracts.runner
+python3 specs/003-classifier-test-suite/contracts/runner.py
 ```
+
+(Direct-path invocation — the directory name contains dashes, so a
+`python -m` module form is not importable. The fixture index is built
+in memory on every run; no `index.json` file is written.)
 
 See `../quickstart.md` for the full set of invocations.
 
