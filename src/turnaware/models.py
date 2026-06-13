@@ -39,6 +39,8 @@ class AdmissionRequest:
     agent: dict[str, Any] | None = None
     surface: dict[str, Any] | None = None
     request_id: str | None = None
+    classifier: str | None = None
+    classifier_config: dict[str, Any] | None = None
 
     @property
     def allowed_context_references(self) -> set[str]:
@@ -47,14 +49,18 @@ class AdmissionRequest:
 
 @dataclass(frozen=True)
 class AdmissionResult:
+    classifier: str
     verdict: str
     confidences: dict[str, float]
     context_checked: tuple[str, ...]
     reasons: tuple[str, ...]
     request_id: str | None = None
+    classifier_provider: str | None = None
+    classifier_model: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
+            "classifier": self.classifier,
             "verdict": self.verdict,
             "confidences": dict(self.confidences),
             "context_checked": list(self.context_checked),
@@ -62,6 +68,10 @@ class AdmissionResult:
         }
         if self.request_id is not None:
             payload["request_id"] = self.request_id
+        if self.classifier_provider is not None:
+            payload["classifier_provider"] = self.classifier_provider
+        if self.classifier_model is not None:
+            payload["classifier_model"] = self.classifier_model
         return payload
 
 

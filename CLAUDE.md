@@ -12,7 +12,7 @@ Read these before substantive work:
 3. the active SpecKit feature directory under `specs/`, when one exists
 
 <!-- SPECKIT START -->
-For the active bounded feature, read `specs/001-core-cli-mvp/plan.md` for
+For the active bounded feature, read `specs/002-admission-classifier/plan.md` for
 technologies, project structure, shell commands, and implementation constraints.
 <!-- SPECKIT END -->
 
@@ -36,7 +36,7 @@ Use the full production gate path unless the project owner explicitly authorizes
 
 ```text
 /speckit-constitution -> /speckit-specify -> /speckit-clarify ->
-/speckit-checklist -> /speckit-plan -> /speckit-tasks ->
+/speckit-plan -> /speckit-checklist -> /speckit-tasks ->
 /speckit-analyze -> /speckit-implement
 ```
 
