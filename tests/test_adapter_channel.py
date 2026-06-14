@@ -96,19 +96,19 @@ class BuildRequestTests(unittest.TestCase):
 
 
 class GateRoutingTests(unittest.TestCase):
-    def test_pass_is_silent_and_emits_sentinel(self):
+    def test_pass_is_silent_transport_neutral(self):
         r = gate({"content": "peer chatter", "id": "t-1"}, [], agent_id="d",
                  evaluate_fn=_stub("PASS"))
         self.assertTrue(r.silent)
-        self.assertEqual(r.sentinel, SILENT_PASS_SENTINEL)
-        self.assertEqual(r.emit(), SILENT_PASS_SENTINEL)
+        self.assertEqual(r.verdict, "PASS")
+        # cc-connect helper is opt-in, not the primary signal
+        self.assertEqual(r.cc_connect_sentinel(), SILENT_PASS_SENTINEL)
 
-    def test_speak_is_not_silent_and_emits_nothing(self):
+    def test_speak_is_not_silent(self):
         r = gate({"content": "implement X", "id": "t-1"}, [], agent_id="d",
                  evaluate_fn=_stub("SPEAK"))
         self.assertFalse(r.silent)
-        self.assertIsNone(r.sentinel)
-        self.assertEqual(r.emit(), "")
+        self.assertEqual(r.cc_connect_sentinel(), "")
         self.assertIn("participant turn", r.run_shape)
 
     def test_run_shapes_present_for_all_verdicts(self):
@@ -140,7 +140,7 @@ class FailPolicyTests(unittest.TestCase):
                  fail_policy="closed", evaluate_fn=self._boom)
         self.assertEqual(r.verdict, "PASS")
         self.assertTrue(r.silent)
-        self.assertEqual(r.sentinel, SILENT_PASS_SENTINEL)
+        self.assertEqual(r.cc_connect_sentinel(), SILENT_PASS_SENTINEL)
         self.assertTrue(r.degraded)
 
     def test_fail_raise_propagates(self):
@@ -161,11 +161,11 @@ class RealCorePathTests(unittest.TestCase):
         }
         return mock.patch.dict(os.environ, {"TURNAWARE_CLASSIFIER_TEST_RESULT": json.dumps(payload)})
 
-    def test_real_gate_pass_emits_sentinel(self):
+    def test_real_gate_pass_is_silent(self):
         with self._inject("PASS", checked=["trigger:t-1"]):
             r = gate({"content": "already handled", "id": "t-1"}, [], agent_id="dalgos")
         self.assertTrue(r.silent)
-        self.assertEqual(r.emit(), SILENT_PASS_SENTINEL)
+        self.assertEqual(r.cc_connect_sentinel(), SILENT_PASS_SENTINEL)
         self.assertEqual(r.classifier_model, "turnaware-test-fixture-provider")
 
     def test_real_gate_speak_routes_through(self):
@@ -176,22 +176,31 @@ class RealCorePathTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
-    def _run(self, payload):
+    def _run(self, payload, argv=None):
         buf_out, buf_err = io.StringIO(), io.StringIO()
         with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))), \
                 mock.patch("sys.stdout", buf_out), mock.patch("sys.stderr", buf_err):
-            code = channel.main([])
+            code = channel.main(argv or [])
         return code, buf_out.getvalue(), buf_err.getvalue()
 
-    def test_cli_pass_prints_sentinel(self):
-        payload = {
-            "trigger": {"content": "peer noise", "id": "t-1"},
-            "history": [],
-            "agent": {"id": "dalgos"},
-            "fail_policy": "open",
-        }
+    def test_cli_default_pass_is_transport_neutral_json(self):
+        # Default output carries no cc-connect coupling: a JSON directive the
+        # host acts on via silent/verdict.
+        payload = {"trigger": {"content": "peer noise", "id": "t-1"},
+                   "history": [], "agent": {"id": "dalgos"}, "fail_policy": "open"}
         with mock.patch("turnaware.adapters.channel.evaluate", _stub("PASS")):
             code, out, _ = self._run(payload)
+        self.assertEqual(code, 0)
+        directive = json.loads(out)
+        self.assertEqual(directive["verdict"], "PASS")
+        self.assertTrue(directive["silent"])
+        self.assertNotIn("CC_CONNECT_SILENT_PASS", out)
+
+    def test_cli_cc_connect_format_prints_sentinel_on_pass(self):
+        payload = {"trigger": {"content": "peer noise", "id": "t-1"},
+                   "history": [], "agent": {"id": "dalgos"}}
+        with mock.patch("turnaware.adapters.channel.evaluate", _stub("PASS")):
+            code, out, _ = self._run(payload, argv=["--format", "cc-connect"])
         self.assertEqual(code, 0)
         self.assertEqual(out.strip(), SILENT_PASS_SENTINEL)
 
@@ -205,6 +214,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         directive = json.loads(out)
         self.assertEqual(directive["verdict"], "SPEAK")
+        self.assertFalse(directive["silent"])
         self.assertIn("run_shape", directive)
         self.assertNotIn("CC_CONNECT_SILENT_PASS", out)
 

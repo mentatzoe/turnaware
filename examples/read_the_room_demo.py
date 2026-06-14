@@ -82,7 +82,7 @@ def main() -> int:
         model_seen = result.classifier_model or model_seen
         if result.silent:
             silent += 1
-            action = f"emit {result.sentinel!r}  (suppressed)"
+            action = "stay silent (host posts nothing)"
         else:
             spoke += 1
             action = "agent composes its turn"

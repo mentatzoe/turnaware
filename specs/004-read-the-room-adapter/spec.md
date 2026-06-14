@@ -4,7 +4,15 @@
 
 **Created**: 2026-06-13
 
-**Status**: Implemented
+**Status**: Implemented (refined by `005`)
+
+> **Reconciliation 2026-06-14 (spec 005):** the adapter's default contract was
+> made transport-neutral — `gate()` returns `verdict` + `silent`, and the CLI
+> prints a JSON directive for every verdict. The `CC_CONNECT_SILENT_PASS`
+> sentinel is now opt-in (CLI `--format cc-connect`, or
+> `ChannelGateResult.cc_connect_sentinel()`), not the default PASS output, so no
+> consumer depends on cc-connect. References below to "emit the sentinel on PASS"
+> describe that opt-in mode.
 
 **Tier**: Adapter (Constitution VI). This is the first adapter; it depends on the
 core admission contract and never the reverse.
@@ -90,7 +98,10 @@ off-surface telemetry; a noise-sensitive deployment may choose fail-closed.
 - **FR-001**: Map trigger + transcript + identity (+ optional pinned rules) to a
   valid `AdmissionRequest`; transcript lines carry a normalized role and the
   agent's own lines are tagged `self`.
-- **FR-002**: PASS routes to the literal `CC_CONNECT_SILENT_PASS` sentinel
+- **FR-002** (as refined by `005`): PASS routes to a transport-neutral
+  `silent=true` decision; the literal `CC_CONNECT_SILENT_PASS` sentinel is an
+  opt-in cc-connect compatibility output. Original text:
+  PASS routes to the literal `CC_CONNECT_SILENT_PASS` sentinel
   (matching cc-connect `SilentPassSentinel`); SPEAK/ASK/ACK route to a run-shape
   directive carrying no reply prose.
 - **FR-003**: The CLI is a stable JSON-in / sentinel-or-JSON-out subprocess

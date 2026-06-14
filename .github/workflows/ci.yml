@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# TurnAware is stdlib-only and its tests are fully offline (the classifier is
+# stubbed via TURNAWARE_CLASSIFIER_TEST_RESULT), so CI needs no provider secrets.
+# Live-provider evidence is captured manually at release time, not in CI.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: unittest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run the full offline suite
+        run: python -m unittest --verbose
+      - name: Verdict-suite CLI loads the corpus (smoke)
+        run: python3 specs/003-classifier-test-suite/contracts/runner.py --list
+
+  package:
+    name: clean-install packaging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build an isolated install and verify the public surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/venv
+          /tmp/venv/bin/python -m pip install --upgrade pip
+          /tmp/venv/bin/python -m pip install .
+          # Importable without the tests/ sys.path shim
+          /tmp/venv/bin/python -c "import turnaware; from turnaware.adapters import channel; print('import OK')"
+          # Console scripts are installed
+          /tmp/venv/bin/turnaware --help >/dev/null
+          # End-to-end through the installed console scripts, offline (stubbed classifier)
+          export TURNAWARE_CLASSIFIER_TEST_RESULT='{"verdict":"SPEAK","confidences":{"PASS":0,"ACK":0,"ASK":0,"SPEAK":1},"context_checked":[],"reasons":["ci smoke"]}'
+          echo '{"trigger":{"content":"dalgos, summarize the change","id":"t-1"},"context":[],"classifier":"product"}' \
+            | /tmp/venv/bin/turnaware admit | grep -q '"verdict": "SPEAK"'
+          # Channel adapter: default output is transport-neutral JSON ...
+          PASS_PAYLOAD='{"trigger":{"content":"vigil, rebase","message_id":"m-1"},"history":[],"agent":{"id":"dalgos"}}'
+          export TURNAWARE_CLASSIFIER_TEST_RESULT='{"verdict":"PASS","confidences":{"PASS":1,"ACK":0,"ASK":0,"SPEAK":0},"context_checked":[],"reasons":["ci"]}'
+          echo "$PASS_PAYLOAD" | /tmp/venv/bin/turnaware-channel | grep -q '"silent": true'
+          # ... and --format cc-connect opts into the cc-connect sentinel
+          echo "$PASS_PAYLOAD" | /tmp/venv/bin/turnaware-channel --format cc-connect | grep -q '^CC_CONNECT_SILENT_PASS$'
+          echo "packaging smoke OK"

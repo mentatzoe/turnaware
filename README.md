@@ -144,10 +144,10 @@ identifies the provider model, and `result["verdict"]` is one of `PASS`, `ACK`,
 A participant agent on a shared, turn-aware surface does not call the core
 directly — it uses the **channel adapter** (`turnaware.adapters.channel`), which
 maps its channel-local inputs (the triggering message, the recent transcript,
-its own identity) to an admission request, runs the gate, and routes the
-verdict. On `PASS` it emits the literal `CC_CONNECT_SILENT_PASS` sentinel that
-cc-connect already intercepts and suppresses; on `SPEAK`/`ASK`/`ACK` it returns a
-*run-shape* and lets the agent compose its own turn. It never writes replies.
+its own identity) to an admission request, runs the gate, and returns a
+transport-neutral decision: `verdict` plus `silent`. If `silent`, the host posts
+nothing; otherwise it composes one turn in the returned *run-shape*. The adapter
+never writes replies, and nothing in it is tied to a specific chat platform.
 
 In-process (Python host):
 
@@ -161,30 +161,36 @@ result = gate(
         {"content": "I'd go in-process LRU.", "author": "vigil",
          "author_kind": "peer_bot", "message_id": "m-41"},
     ],
-    agent_id="dalgos",            # plus optional agent_role, mention via surface
+    agent_id="dalgos",            # plus optional agent_role / agent_mention_id
     pinned_rules=None,            # optional channel governance text
     fail_policy="open",           # open->SPEAK | closed->PASS | raise
 )
 
 if result.silent:
-    print(result.emit())          # "CC_CONNECT_SILENT_PASS" — host suppresses
+    ...                           # post nothing this turn
 else:
-    # result.verdict / result.run_shape / result.reasons — host composes the turn
-    ...
+    ...                           # compose a turn per result.verdict / result.run_shape
 ```
 
-Subprocess (non-Python host, e.g. cc-connect/Go) — JSON in, sentinel-or-JSON out:
+Subprocess (non-Python host) — JSON in, a transport-neutral JSON directive out:
 
 ```sh
 echo '{"trigger":{"content":"vigil, rebase the branch","message_id":"m-1"},
        "history":[],"agent":{"id":"dalgos"},"fail_policy":"open"}' \
   | PYTHONPATH=src python3 -m turnaware.adapters
-# -> CC_CONNECT_SILENT_PASS   (PASS; suppress the send)
-# -> {"verdict":"SPEAK",...}  (otherwise; proceed within run_shape)
+# -> {"verdict":"PASS","silent":true,...}    (host posts nothing)
+# -> {"verdict":"SPEAK","silent":false,...}  (host composes a turn)
 ```
 
-A runnable multi-turn demo is in
-[`examples/read_the_room_demo.py`](examples/read_the_room_demo.py); the full
+cc-connect is supported as one transport, not a dependency: pass
+`--format cc-connect` (or call `result.cc_connect_sentinel()`) to emit the
+`CC_CONNECT_SILENT_PASS` sentinel it intercepts on PASS.
+
+**[`docs/integration.md`](docs/integration.md) is the full integration guide** —
+scope, the three install/integration paths (loader instruction, in-process
+import, subprocess CLI), how to wire it into a channel adapter, and how to
+generalize to other surfaces. A runnable multi-turn demo is in
+[`examples/read_the_room_demo.py`](examples/read_the_room_demo.py); the adapter
 contract is in [`specs/004-read-the-room-adapter/spec.md`](specs/004-read-the-room-adapter/spec.md).
 This is the adapter tier (Constitution VI): it depends on the core and is not a
 live Discord integration — it produces the sentinel an existing cc-connect
