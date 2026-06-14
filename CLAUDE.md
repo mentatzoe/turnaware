@@ -38,8 +38,8 @@ and `content` are forbidden result fields (`FORBIDDEN_REPLY_FIELDS` in
 
 - Python 3.11+, zero runtime dependencies — stdlib only (HTTP via `urllib`).
   Do not add third-party packages or pytest; tests use stdlib `unittest`.
-- Run tests: `python3 -m unittest` (no CI exists — run tests manually before
-  claiming anything is done).
+- Run tests: `python3 -m unittest`. CI (`.github/workflows/ci.yml`) runs this on
+  a Python 3.11/3.12/3.13 matrix plus a clean-install packaging job, all offline.
 - Run the CLI from the repo root (requires classifier env, below):
   `PYTHONPATH=src python3 -m turnaware admit < tests/fixtures/speak.json`
 - Live classifier requires `TURNAWARE_CLASSIFIER_MODEL` and `OPENROUTER_API_KEY`

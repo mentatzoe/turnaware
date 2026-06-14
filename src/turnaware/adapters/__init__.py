@@ -6,9 +6,10 @@ action model. They depend on the core; the core never depends on them.
 
 Currently shipped:
 
-- `channel` — channel-local transcript surface (cc-connect / pilot-bot shape):
-  trigger + recent transcript + agent identity -> verdict -> run-shape action,
-  with `CC_CONNECT_SILENT_PASS` emission on PASS.
+- `channel` — channel-local transcript surface: trigger + recent transcript +
+  agent identity -> verdict -> run-shape action. The contract is
+  transport-neutral (branch on `silent`/`verdict`); cc-connect is supported as
+  one transport via an opt-in sentinel, not a dependency.
 """
 
 from .channel import (

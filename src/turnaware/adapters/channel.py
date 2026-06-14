@@ -1,33 +1,39 @@
-"""Channel-local admission adapter (cc-connect / pilot-bot shape).
+"""Channel-local admission adapter.
 
-This adapter bridges a turn-aware chat surface to the TurnAware core. It takes
+This adapter bridges any turn-aware chat surface to the TurnAware core. It takes
 the channel-local inputs a participant agent already has — the triggering
 message, the recent transcript, and the agent's own identity — maps them to a
 TurnAware admission request, runs the callable core, and routes the verdict
 back into the host's action model.
 
 It stays strictly inside the admission boundary: it returns a verdict and a
-*run-shape* (what kind of turn is warranted), never composed reply prose. On a
-`PASS` verdict it emits the `CC_CONNECT_SILENT_PASS` sentinel that cc-connect's
-Discord platform already intercepts and suppresses, so an existing deployment
-gains LLM-backed admission with no transport changes.
+*run-shape* (what kind of turn is warranted), never composed reply prose. The
+contract is transport-neutral — the host branches on ``silent``/``verdict`` and
+owns how it stays quiet — so nothing here depends on a particular chat platform.
 
-Design references: pilot-bot `before-you-respond.md` (the human-readable rubric
-this implements), cc-connect `core/message.go` (`SilentPassSentinel`).
+cc-connect is supported as one transport, not a requirement: it intercepts a
+`CC_CONNECT_SILENT_PASS` sentinel to suppress a send, so an existing cc-connect
+deployment can drop this in via :meth:`ChannelGateResult.cc_connect_sentinel`
+or the CLI's ``--format cc-connect``. Any other host ignores the sentinel
+entirely and just checks ``result.silent``.
+
+Design reference: pilot-bot `before-you-respond.md` (the human-readable rubric
+this gate implements).
 """
 
 from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
 from ..core import evaluate
 from ..errors import TurnAwareError, ValidationError
 
-# The canonical sentinel cc-connect intercepts to suppress an outbound send.
-# Matches core/message.go: SilentPassSentinel.
+# cc-connect compatibility only: the sentinel cc-connect intercepts to suppress
+# an outbound send (matches its core/message.go SilentPassSentinel). Hosts that
+# are not cc-connect never need this — they branch on ChannelGateResult.silent.
 SILENT_PASS_SENTINEL = "CC_CONNECT_SILENT_PASS"
 
 FailPolicy = Literal["open", "closed", "raise"]
@@ -38,7 +44,7 @@ RUN_SHAPE = {
     "SPEAK": "Produce one normal participant turn (1-3 short paragraphs of plain prose).",
     "ASK": "Ask the operator exactly one blocking clarifying question.",
     "ACK": "Emit one short presence signal (an emoji or a single sentence). No follow-up content.",
-    "PASS": "Stay silent. Emit the silent-pass sentinel and stop.",
+    "PASS": "Stay silent. Post nothing to the channel for this turn.",
 }
 
 # Author-kind normalization. The classifier reasons about who spoke to apply the
@@ -74,7 +80,14 @@ class ChannelMessage:
 
 @dataclass(frozen=True)
 class ChannelGateResult:
-    """The adapter's decision for one trigger, ready to route into the host."""
+    """The adapter's decision for one trigger, ready to route into the host.
+
+    The transport-neutral contract is ``verdict`` + ``silent`` + ``run_shape``:
+    if ``silent`` is True the host posts nothing; otherwise it composes one turn
+    in the ``run_shape`` (the adapter never writes the reply itself). Nothing
+    here is tied to any particular chat transport. The cc-connect sentinel is
+    available via :meth:`cc_connect_sentinel` for that specific deployment only.
+    """
 
     verdict: str
     silent: bool
@@ -84,18 +97,16 @@ class ChannelGateResult:
     context_checked: tuple[str, ...]
     request_id: str | None
     classifier_model: str | None
-    sentinel: str | None  # the literal to emit when silent; None otherwise
     degraded: bool = False  # True when a fail policy produced this, not the classifier
     error: str | None = None  # off-surface telemetry only; never shown in-room
 
-    def emit(self) -> str:
-        """The exact string the host should treat as the agent's final output.
-
-        On PASS this is the silent-pass sentinel (cc-connect suppresses it). On
-        SPEAK/ASK/ACK it is empty — the host now composes the actual turn within
-        the run-shape; the adapter does not write replies.
+    def cc_connect_sentinel(self) -> str:
+        """cc-connect compatibility helper: the exact final-output string that
+        cc-connect intercepts and suppresses on PASS (`CC_CONNECT_SILENT_PASS`),
+        or empty when not silent. Only relevant if your transport is cc-connect;
+        every other host should just branch on ``silent``.
         """
-        return self.sentinel if self.silent else ""
+        return SILENT_PASS_SENTINEL if self.silent else ""
 
 
 def _coerce_message(value: Any, name: str) -> ChannelMessage:
@@ -264,23 +275,21 @@ def _build_result(
     degraded: bool = False,
     error: str | None = None,
 ) -> ChannelGateResult:
-    silent = verdict == "PASS"
     return ChannelGateResult(
         verdict=verdict,
-        silent=silent,
+        silent=verdict == "PASS",
         run_shape=RUN_SHAPE[verdict],
         reasons=reasons,
         confidences=confidences,
         context_checked=context_checked,
         request_id=request_id,
         classifier_model=classifier_model,
-        sentinel=SILENT_PASS_SENTINEL if silent else None,
         degraded=degraded,
         error=error,
     )
 
 
-# --- CLI: a subprocess contract for non-Python hosts (e.g. cc-connect/Go) ---
+# --- CLI: a transport-neutral subprocess contract for any host ---
 
 
 def _read_payload(argv: list[str]) -> dict:
@@ -290,22 +299,55 @@ def _read_payload(argv: list[str]) -> dict:
         prog="turnaware.adapters.channel",
         description="Channel-local admission gate. Reads a JSON payload "
         "(trigger, history, agent, [surface], [pinned_rules], [fail_policy]) "
-        "from --input or stdin; prints the silent-pass sentinel on PASS or a "
-        "JSON directive otherwise.",
+        "from --input or stdin and prints a transport-neutral JSON directive "
+        "(verdict + silent + run_shape). Use --format cc-connect for the "
+        "drop-in cc-connect sentinel on PASS.",
     )
     parser.add_argument("--input", default=None, help="payload JSON file (default: stdin)")
+    parser.add_argument(
+        "--format",
+        choices=["json", "cc-connect"],
+        default="json",
+        help="json (default): always a JSON directive, transport-neutral. "
+        "cc-connect: print the CC_CONNECT_SILENT_PASS sentinel on PASS, JSON otherwise.",
+    )
     args = parser.parse_args(argv)
     raw = open(args.input).read() if args.input else sys.stdin.read()
     try:
-        return json.loads(raw)
+        return {"payload": json.loads(raw), "format": args.format}
     except json.JSONDecodeError as exc:
         raise ValidationError(f"payload must be valid JSON: {exc}") from exc
 
 
+def _directive_json(result: ChannelGateResult) -> str:
+    return json.dumps(
+        {
+            "verdict": result.verdict,
+            "silent": result.silent,
+            "run_shape": result.run_shape,
+            "reasons": list(result.reasons),
+            "confidences": result.confidences,
+            "context_checked": list(result.context_checked),
+            "request_id": result.request_id,
+            "classifier_model": result.classifier_model,
+            "degraded": result.degraded,
+        },
+        sort_keys=True,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry. Exit 0 on a routed verdict; 2 on a malformed payload."""
+    """CLI entry. Exit 0 on a routed verdict; 2 on a malformed payload.
+
+    Default output is a transport-neutral JSON directive for every verdict — the
+    host branches on ``silent``/``verdict`` and owns how it stays quiet, so the
+    CLI carries no dependency on any particular chat platform. ``--format
+    cc-connect`` opts into emitting the cc-connect sentinel on PASS for that
+    specific deployment.
+    """
     try:
-        payload = _read_payload(sys.argv[1:] if argv is None else argv)
+        parsed = _read_payload(sys.argv[1:] if argv is None else argv)
+        payload, out_format = parsed["payload"], parsed["format"]
         if not isinstance(payload, dict):
             raise ValidationError("payload must be a JSON object")
         agent = payload.get("agent") or {}
@@ -331,26 +373,11 @@ def main(argv: list[str] | None = None) -> int:
         # reason the gate degraded goes to stderr, never into the room.
         print(f"channel adapter degraded ({result.error})", file=sys.stderr)
 
-    if result.silent:
-        # The host's final output for this turn is the sentinel; cc-connect
-        # suppresses the send.
-        print(result.sentinel)
+    if out_format == "cc-connect" and result.silent:
+        # Drop-in for cc-connect: its Discord platform intercepts this sentinel.
+        print(result.cc_connect_sentinel())
     else:
-        print(
-            json.dumps(
-                {
-                    "verdict": result.verdict,
-                    "run_shape": result.run_shape,
-                    "reasons": list(result.reasons),
-                    "confidences": result.confidences,
-                    "context_checked": list(result.context_checked),
-                    "request_id": result.request_id,
-                    "classifier_model": result.classifier_model,
-                    "degraded": result.degraded,
-                },
-                sort_keys=True,
-            )
-        )
+        print(_directive_json(result))
     return 0
 
 
