@@ -13,6 +13,32 @@ authors = [
   { name = "TurnAware contributors" }
 ]
 dependencies = []
+keywords = [
+  "agents",
+  "llm",
+  "admission-gate",
+  "turn-taking",
+  "read-the-room",
+  "moderation",
+  "openrouter",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Communications :: Chat",
+  "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/mentatzoe/turnaware"
+Repository = "https://github.com/mentatzoe/turnaware"
+Issues = "https://github.com/mentatzoe/turnaware/issues"
 
 [project.scripts]
 turnaware = "turnaware.cli:main"
