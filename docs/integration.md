@@ -113,6 +113,9 @@ Read the JSON it prints:
 (If your transport is cc-connect, add `--format cc-connect`; then on PASS the CLI
 prints the bare `CC_CONNECT_SILENT_PASS` sentinel for the agent to emit verbatim.)
 
+A complete, copy-paste loader block is in
+[`examples/loader-snippet.md`](../examples/loader-snippet.md).
+
 Trade-off: the agent still spends a turn building the payload, but the *decision*
 is now TurnAware's, not the model's improvisation.
 
@@ -143,6 +146,10 @@ else:
 
 # cc-connect transport only: result.cc_connect_sentinel() is the suppress string.
 ```
+
+A runnable non-cc-connect host using exactly this pattern (with a custom
+suppression token) is in
+[`examples/generic_host_demo.py`](../examples/generic_host_demo.py).
 
 ### Path C — subprocess CLI (any host, e.g. cc-connect/Go)
 
@@ -260,6 +267,7 @@ The full surface, and where each knob lives:
 | API key | env `TURNAWARE_CLASSIFIER_API_KEY` or `OPENROUTER_API_KEY` | — | operator-only; never read from the request |
 | provider endpoint | env `TURNAWARE_CLASSIFIER_BASE_URL` or `OPENAI_BASE_URL` | OpenRouter | point at any OpenAI-compatible endpoint, incl. localhost |
 | request timeout | per-call `classifier_config.timeout` | 30s | positive seconds |
+| provider retries | per-call `classifier_config.max_retries` / `retry_base_delay` | 2 / 0.5s | retries transient errors (429/5xx/timeouts) with exponential backoff; never retries 401/403/4xx |
 | failure behavior | `gate(fail_policy=...)` / payload `fail_policy` | `open` (→SPEAK) | `open` \| `closed` (→PASS) \| `raise` |
 | suppression output | CLI `--silent-token STR` / `--format cc-connect`; Python `result.silent_token(...)` | none (JSON) | your transport's sentinel, if it uses one |
 | offline/dev decision | env `TURNAWARE_CLASSIFIER_TEST_RESULT` | unset | pin a verdict; no provider call |
@@ -296,18 +304,25 @@ security note.
 - **Latency**: one provider round-trip per decision (the selected model runs at
   ~1s median; see the bake-off evidence). Budget for it on every turn the gate
   fires.
-- **Failure policy**: if the classifier is unavailable, `gate()`'s `fail_policy`
-  decides — `open` degrades to SPEAK (never silently drop a turn; the default),
-  `closed` degrades to PASS (favor quiet), `raise` hands the error back. The
-  failure reason is returned as off-surface telemetry (`degraded`, `error`),
-  never placed in the room.
+- **Transient errors**: the provider client retries transient failures
+  (HTTP 429/5xx, timeouts) with exponential backoff — tune via
+  `classifier_config.max_retries` / `retry_base_delay`. Permanent errors
+  (401/403 and other 4xx) abort immediately without retry.
+- **Failure policy**: if the classifier is unavailable after retries, `gate()`'s
+  `fail_policy` decides — `open` degrades to SPEAK (never silently drop a turn;
+  the default), `closed` degrades to PASS (favor quiet), `raise` hands the error
+  back. The failure reason is returned as off-surface telemetry (`degraded`,
+  `error`), never placed in the room.
 - **Auditing**: every non-degraded result carries `confidences`,
   `context_checked` (only references it actually consulted), and `reasons` — log
   these to explain a verdict without re-reading the channel.
 - **Known limitation**: a bare resolution claim with no corroborating context
   ("Already handled. Resolved. No response needed.") is treated as PASS-able by
   the current model; if your surface needs such claims verified, account for it
-  host-side. Tracked in the 003 evidence.
+  host-side. Tracked in the 003 evidence and `docs/STABILITY.md`.
+- **Stability contract**: the verdict set, result fields, request fields, and CLI
+  exit codes are stable within a major version — see
+  [`STABILITY.md`](STABILITY.md) for what is guaranteed vs. experimental.
 
 ## Generalizing to another channel adapter (e.g. Slack)
 

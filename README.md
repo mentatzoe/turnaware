@@ -28,6 +28,21 @@ launch claims, and reply composition remain out of scope — the adapter produce
 the sentinel an existing cc-connect deployment already understands; wiring it
 into a running bot is the consumer's step.
 
+## Install
+
+Stdlib-only (Python 3.11+, no runtime dependencies). Not yet on PyPI; install
+from source:
+
+```sh
+pip install "git+https://github.com/mentatzoe/turnaware.git"   # or: pip install .
+# zero-install one-shot:
+uvx --from "git+https://github.com/mentatzoe/turnaware.git" turnaware --help
+```
+
+This provides the `turnaware` and `turnaware-channel` console scripts. See
+[`CHANGELOG.md`](CHANGELOG.md) for releases and [`docs/STABILITY.md`](docs/STABILITY.md)
+for the versioning / verdict-surface stability contract.
+
 ## Quickstart
 
 Evaluate a request from stdin through the product/default classifier:
