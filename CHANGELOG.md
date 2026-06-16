@@ -26,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Classifier rubric and live model selection.** A documented rubric for the
   four-verdict decision, with `gemini-3.1-flash-lite` as the default live model
   selection (plus an open-weight alternative captured in the selection evidence).
+- **Provider resilience.** Bounded retry with exponential backoff on transient
+  provider errors (HTTP 429/5xx, timeouts); permanent errors (401/403 and other
+  4xx) abort immediately. Tunable via `classifier_config.max_retries` and
+  `retry_base_delay`.
+- **Deterministic fast-path.** A conservative pre-classifier that resolves
+  certain-from-the-envelope cases (an `<@id>` mention aimed at another agent, or
+  a self-echo) to `PASS` without a provider call, cutting per-turn cost and
+  latency; anything ambiguous escalates to the classifier. Disable with
+  `TURNAWARE_FASTPATH=0`.
+- **Opt-in PASS-corroboration mode.** `classifier_config.require_pass_corroboration`
+  (default off) downgrades an uncorroborated `PASS` (one with no consulted
+  `context:` reference) to `ASK`, for surfaces that must challenge unverified
+  completion claims.
 - **Transport-neutral channel adapter.** A `turnaware-channel` adapter that emits
   a transport-neutral verdict-plus-silent JSON envelope by default, exposes a
   generic suppression token for any transport, and offers a `cc-connect` preset
@@ -38,8 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI.** A fully offline GitHub Actions matrix (Python 3.11/3.12/3.13) running
   the `unittest` suite plus a clean-install packaging job that verifies the
   public surface and console scripts.
+- **Stability contract and drift detection.** `docs/STABILITY.md` documents the
+  stable verdict/result/request surface and the SemVer policy; a manual
+  live-smoke job and a scheduled weekly live corpus eval (`scripts/live_eval.py`)
+  track provider/model drift.
 - **Integration guide.** Documentation covering configuration and adapter
-  integration for embedding the admission gate.
+  integration for embedding the admission gate, including a drop-in loader
+  template and a generic (non-cc-connect) host example.
 
 [Unreleased]: https://github.com/mentatzoe/turnaware/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/mentatzoe/turnaware/releases/tag/v0.1.0
