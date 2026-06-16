@@ -43,5 +43,10 @@ qwen3-235b the cheapest-at-equal-quality option with more latency variance.
 
 ## Decision status
 
-Open: owner to choose flip-default-to-qwen3-235b vs keep-gemini-and-document vs A/B.
-Default remains google/gemini-3.1-flash-lite pending that call.
+Resolved 2026-06-16 (owner): **keep `google/gemini-3.1-flash-lite` as the
+default** — its quality/latency/cost is good enough, and its latency is the most
+consistent. `qwen/qwen3-235b-a22b-2507` is documented as the recommended
+**open-weight** alternative (equal accuracy/headline at ~1/5 the cost, with more
+latency variance through OpenRouter); switching is a one-line
+`TURNAWARE_CLASSIFIER_MODEL` change. See the integration guide's Configuration
+section.

@@ -244,6 +244,14 @@ export TURNAWARE_CLASSIFIER_TEST_RESULT='{"verdict":"PASS","confidences":{"PASS"
 ## Configuration (self-service)
 
 Everything below is set by the integrating agent or human — no code changes.
+
+**Recommended models.** The default is `google/gemini-3.1-flash-lite` (88% on the
+adversarial corpus, 6/7 load-bearing cases, ~1s latency). If you want an
+**open-weight** model with no big-3 dependency, `qwen/qwen3-235b-a22b-2507`
+matches that accuracy at roughly one-fifth the cost (with somewhat more latency
+variance). Either is a one-line `TURNAWARE_CLASSIFIER_MODEL` change; see the
+per-model evidence under `specs/003-classifier-test-suite/evidence/`.
+
 The full surface, and where each knob lives:
 
 | Knob | Where | Default | Notes |
