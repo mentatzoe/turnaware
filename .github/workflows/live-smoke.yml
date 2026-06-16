@@ -35,7 +35,7 @@ jobs:
         # so untrusted ${{ github.event.* }} text never lands in the shell.
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          INPUT_MODEL: ${{ inputs.model }}
+          INPUT_MODEL: ${{ github.event.inputs.model }}
         shell: bash
         run: |
           set -euo pipefail
