@@ -19,8 +19,8 @@ jobs:
     env:
       TURNAWARE_CLASSIFIER_MODEL: google/gemini-3.1-flash-lite
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install TurnAware
